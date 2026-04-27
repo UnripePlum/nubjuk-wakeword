@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+.eggs/
+*.egg-info/
+*.egg
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+htmlcov/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Data — manifests only are tracked
+data/raw/
+data/synth/
+data/processed/
+data/cache/
+data/piper_voices/
+!data/manifests/
+!data/**/.gitkeep
+
+# Model checkpoints — release only is tracked
+models/checkpoints/
+models/exports/
+models/runs/
+models/wandb/
+!models/release/
+!models/**/.gitkeep
+
+# TensorFlow / TensorBoard
+*.tfevents.*
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Env files
+.env
+.env.local
