@@ -40,6 +40,7 @@ mcu 가 의존하는 핸드오프 인터페이스. 변경 시 nubjuk-mcu 와 동
 
 ```bash
 # Python 3.10+ 권장 (microWakeWord 의존)
+git submodule update --init --recursive
 python -m venv .venv && source .venv/bin/activate
 pip install -e .
 
@@ -60,6 +61,13 @@ jupyter lab
 노트북에서 [notebooks/01_local_bootstrap.ipynb](/Users/unripeplum/projects/nubjuk/wakeword/notebooks/01_local_bootstrap.ipynb:1) 를 열어
 `check-env -> synth -> augment -> train -> eval -> export -> release` 순서로 스모크 실행할 수 있습니다.
 현재 phase 명령은 stub 이므로, 출력은 흐름 검증용입니다.
+
+## Upstream microWakeWord
+
+이 레포는 upstream microWakeWord 를 서브모듈로 직접 참조합니다.
+
+- 경로: `third_party/microWakeWord`
+- 원본: `https://github.com/kahrendt/microWakeWord`
 
 ---
 
