@@ -49,6 +49,18 @@ python -m nubjuk_wakeword.cli check-env
 # Phase 1~4: PHASES.md 따라 진행
 ```
 
+### 노트북으로 시작하기 (로컬)
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[notebook]"
+jupyter lab
+```
+
+노트북에서 [notebooks/01_local_bootstrap.ipynb](/Users/unripeplum/projects/nubjuk/wakeword/notebooks/01_local_bootstrap.ipynb:1) 를 열어
+`check-env -> synth -> augment -> train -> eval -> export -> release` 순서로 스모크 실행할 수 있습니다.
+현재 phase 명령은 stub 이므로, 출력은 흐름 검증용입니다.
+
 ---
 
 ## 문서 인덱스
