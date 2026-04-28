@@ -1,3 +1,0 @@
-[submodule "third_party/microWakeWord"]
-	path = third_party/microWakeWord
-	url = https://github.com/kahrendt/microWakeWord.git

@@ -58,3 +58,9 @@ Thumbs.db
 .env
 .env.local
 .gstack/
+
+# Vendored microWakeWord data artifacts (do not track)
+microWakeWord/notebooks/**
+!microWakeWord/notebooks/
+!microWakeWord/notebooks/basic_training_notebook.ipynb
+microWakeWord/microwakeword.egg-info/

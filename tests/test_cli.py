@@ -17,7 +17,7 @@ def test_check_env_command_returns_zero_and_prints_stub() -> None:
 def test_synth_command_returns_zero_and_prints_stub() -> None:
     stream = io.StringIO()
     with redirect_stdout(stream):
-        code = cli.main(["synth"])
+        code = cli.main(["synth", "--dry-run"])
 
     output = stream.getvalue()
     assert code == 0

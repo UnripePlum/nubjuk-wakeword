@@ -10,9 +10,9 @@
 **목표**: 학습을 돌릴 수 있는 환경을 갖춘다.
 
 - [ ] Python 3.10+ 가상환경
-- [ ] `pip install -e .` 로 의존성 설치 (microWakeWord, tensorflow, piper-tts, librosa)
+- [ ] `pip install -e .` 로 의존성 설치 (microWakeWord, tensorflow, qwen-tts, librosa)
 - [ ] GPU 환경 결정 (로컬 Mac MPS / Colab T4 / Cloud) — `ARCHITECTURE.md` 참고
-- [ ] Piper 한국어 voice 모델 다운로드 (`neurlang/piper-onnx-kss-korean` 등)
+- [ ] Qwen TTS 모델 다운로드/캐시 준비 (`Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign`)
 - [ ] `python -m nubjuk_wakeword.cli check-env` 로 의존성 검증
 - [ ] `data/manifests/` 디렉토리 git 추적 (`.gitkeep`)
 
@@ -22,13 +22,14 @@
 
 ## Phase 1 — 데이터 수집
 
-**목표**: positive ("넙죽 훈련병") + negative (일반 한국어, 유사어) 데이터셋 구축.
+**목표**: positive ("넙죽아") + negative (일반 한국어, 유사어) 데이터셋 구축.
 
-### 1.1 Piper 합성 positive
-- [ ] `scripts/01_synth_piper.sh` — Piper TTS 로 "넙죽 훈련병" 다양 변주 생성
-- [ ] 합성 변수: voice_id, pitch_scale, length_scale, noise_scale
+### 1.1 Qwen 합성 positive
+- [ ] `scripts/01_synth_qwen.sh` (또는 `cli synth`) — 한국어 입력으로 다양 변주 생성
+- [ ] 합성 변수: language, style prompt, batch_size, max_samples
 - [ ] 합성량: 100~500 샘플 (학습 부트스트랩용)
-- [ ] 출력: `data/synth/positive/*.wav` + `data/manifests/synth_positive.csv`
+- [ ] 출력: `microWakeWord/notebooks/generated_samples/*.wav`
+- [ ] QC manifest: `generated_samples/qwen_qc_manifest.csv`
 
 ### 1.2 Real human positive
 - [ ] 5~10명 × ~20회 녹음 (다양한 거리·노이즈 환경)

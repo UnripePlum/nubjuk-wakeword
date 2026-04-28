@@ -3,14 +3,20 @@
 ## 데이터 흐름
 
 ```
-┌──────────────────────────────┐    ┌──────────────────────────────┐
-│ Piper TTS (한국어 voice)     │    │ Real human recordings         │
-│ "넙죽 훈련병" × N variations │    │ 5~10명 × ~20회 / 사람          │
-│ (pitch, speed, accent 변주) │    │ (다양한 거리, 노이즈 환경)      │
-└─────────────┬────────────────┘    └─────────────┬────────────────┘
+┌────────────────────────────────┐   ┌──────────────────────────────┐
+│ Qwen3-TTS VoiceDesign          │   │ Real human recordings         │
+│ target_word='넙죽아'            │   │ 훈련 미사용 holdout 분리        │
+│ style prompts × N variations   │   │ (다양한 거리/속도/환경)         │
+└─────────────┬──────────────────┘   └─────────────┬────────────────┘
               │                                    │
               ▼                                    ▼
-       data/synth/*.wav                     data/raw/*.wav
+     generated_samples/_raw_qwen/*.wav      data/raw/*.wav
+              │
+              ▼
+   Quality Gate (duration, RMS, clipping, sr)
+              │
+              ▼
+       generated_samples/*.wav
               │                                    │
               └─────────────────┬──────────────────┘
                                 ▼
@@ -50,36 +56,27 @@
 
 ---
 
-## 컴포넌트
+## 현재 구현 컴포넌트
 
-### `src/nubjuk_wakeword/data/`
-- `piper_synth.py` — Piper TTS 합성 (다양한 voice + perturbation)
-- `record.py` — 실제 녹음 가이드 (사용자 인터랙션 도구)
-- `augment.py` — room IR convolution, noise mix, speed/pitch perturbation
-- `manifest.py` — 데이터셋 manifest (CSV) 생성/로드. seed + version 고정.
+### `src/nubjuk_wakeword/qwen_synth.py`
+- `QwenSynthesisConfig`: 한국어 입력/스타일 프롬프트/장치 설정
+- `synthesize_with_qwen`: `generate_voice_design` 배치 생성 후 16k PCM 저장
 
-### `src/nubjuk_wakeword/train/`
-- `microwakeword_wrapper.py` — microWakeWord 라이브러리 래퍼
-- `config.py` — 학습 hyperparameter (model arch, lr, epochs, batch size)
-- `train.py` — 학습 진입점. checkpoint → `models/checkpoints/`
+### `src/nubjuk_wakeword/audio_qc.py`
+- `run_quality_gate`: 무음/클리핑/길이 이상치 제거
+- `qwen_qc_manifest.csv` 생성 (파일별 품질 지표 기록)
 
-### `src/nubjuk_wakeword/eval/`
-- `metrics.py` — FAR (false accept rate), FRR (false reject rate), latency 측정
-- `threshold_calibrate.py` — ROC 곡선 → operating point 결정
-- `adversarial.py` — 유사 단어 negative set ("넙죽이", "훈련", 일반 한국어 corpus)
-
-### `src/nubjuk_wakeword/export/`
-- `tflite_export.py` — Keras → TFLite 변환 + int8 PTQ
-- `tflm_validate.py` — TFLite Micro 호환 검증 (op set, tensor sizes)
-- `release.py` — `models/release/wake_nubjuk_ko.tflite` 로 복사 + metadata 기록
+### `src/nubjuk_wakeword/microwakeword_pipeline.py`
+- `write_training_yaml`: microWakeWord 학습 YAML 자동 생성
+- `run_model_train_eval`: mixednet 학습/양자화 테스트 실행
 
 ### `src/nubjuk_wakeword/cli.py`
-- `python -m nubjuk_wakeword.cli check-env` — 의존성 검증
-- `python -m nubjuk_wakeword.cli synth` — Piper 합성
-- `python -m nubjuk_wakeword.cli train` — 학습
-- `python -m nubjuk_wakeword.cli eval` — 평가
-- `python -m nubjuk_wakeword.cli export` — TFLite export
-- `python -m nubjuk_wakeword.cli release` — 산출물 release
+- `check-env`: Python/TensorFlow/microWakeWord/qwen-tts 점검
+- `synth`: Qwen 합성 + 자동 QC
+- `quality-gate`: standalone QC 실행
+- `train`: YAML 생성 + 학습 실행
+- `eval`: 평가 대시보드 스크립트 실행
+- `export`: release 경로로 tflite 복사
 
 ---
 
@@ -93,16 +90,22 @@ wakeword/
 ├── src/nubjuk_wakeword/
 │   ├── __init__.py
 │   ├── cli.py
-│   ├── data/
-│   ├── train/
-│   ├── eval/
-│   └── export/
+│   ├── paths.py
+│   ├── environment.py
+│   ├── qwen_synth.py
+│   ├── audio_qc.py
+│   └── microwakeword_pipeline.py
 ├── scripts/
-│   ├── 01_synth_piper.sh
+│   ├── 01_synth_qwen.sh
 │   ├── 02_augment.sh
 │   ├── 03_train.sh
 │   ├── 04_eval.sh
-│   └── 05_export_release.sh
+│   ├── 05_export_release.sh
+│   ├── 06_try_model.py
+│   ├── 07_calibrate_threshold.py
+│   ├── 08_make_unseen_holdout.py
+│   ├── 09_realtime_mic_test.py
+│   └── 10_plot_eval_dashboard.py
 ├── data/                       (gitignored except manifests)
 │   ├── raw/                    # 실제 녹음 (.gitignore)
 │   ├── synth/                  # Piper 합성 (.gitignore)
@@ -123,7 +126,7 @@ wakeword/
 |----------|------|
 | `microWakeWord` | 학습 프레임워크 |
 | `tensorflow` >= 2.15 | TFLite + 양자화 |
-| `piper-tts` | 한국어 TTS 합성 |
+| `qwen-tts` | 한국어 TTS 합성 (VoiceDesign) |
 | `librosa`, `soundfile` | 오디오 처리 |
 | `numpy`, `pandas` | 데이터 manifest |
 | `scikit-learn` | ROC / threshold 캘리브레이션 |
