@@ -1,0 +1,6 @@
+version: 1
+targets:
+  넙죽아:
+    slug: neopjuka
+    config: configs/nubjuk_pipeline.yaml
+    model_name: wake_nubjuk_ko

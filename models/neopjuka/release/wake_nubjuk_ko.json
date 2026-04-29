@@ -1,0 +1,17 @@
+{
+  "type": "micro",
+  "wake_word": "넙죽아",
+  "author": "UnripePlum",
+  "model": "wake_nubjuk_ko.tflite",
+  "trained_languages": [
+    "ko"
+  ],
+  "version": 2,
+  "micro": {
+    "probability_cutoff": 0.78,
+    "sliding_window_size": 5,
+    "feature_step_size": 10,
+    "tensor_arena_size": 50000,
+    "minimum_esphome_version": "2024.7"
+  }
+}

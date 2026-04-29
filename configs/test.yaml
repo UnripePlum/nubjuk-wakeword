@@ -1,0 +1,182 @@
+version: 1
+model_name: wake_nubjuk_ko
+target_phrases:
+- 넙죽아
+n_samples: 100
+n_samples_val: 20
+layout:
+  datasets_dir: ../datasets
+  features_dir: ../features
+  training_dir: ../training
+  models_dir: ../models
+  release_dir: ../models/neopjuka/release
+  target_word: 넙죽아
+  target_slug: neopjuka
+  dataset_run_id: '20260428_223142'
+  feature_run_id: '20260428_223142'
+  train_run_id: '20260428_223142'
+pipeline:
+  steps:
+  - check-env
+  - synth
+  - prepare-features
+  - train
+  - eval
+  - export
+  stop_on_error: true
+check_env:
+  enabled: true
+  strict: false
+synth:
+  enabled: true
+  target_word: 넙죽아
+  output_dir: ../datasets/neopjuka/generated_samples/20260428_223142/data
+  max_samples: 100
+  batch_size: 8
+  model_id: Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign
+  language: Korean
+  instruct:
+  - 차분한 한국어 여성 목소리, 또렷한 발음
+  - 부드러운 한국어 남성 목소리, 중간 속도
+  - 밝고 경쾌한 톤, 자연스러운 한국어 발화
+  - 조용한 환경에서 또렷하게 말하는 톤
+  top_p_values:
+  - 0.9
+  - 0.95
+  - 1.0
+  temperature_values:
+  - 0.7
+  - 0.9
+  - 1.1
+  top_k_values:
+  - 20
+  - 50
+  repetition_penalty_values:
+  - 1.0
+  - 1.05
+  max_new_tokens_values:
+  - 24
+  - 32
+  device: auto
+  dtype: auto
+  sample_rate: 16000
+  clean_output: false
+  skip_qc: false
+  qc_min_duration_s: 0.25
+  qc_max_duration_s: 2.5
+  qc_min_rms: 0.005
+  qc_max_clipped_ratio: 0.02
+  generate_adversarial: true
+  adversarial_output_dir: ../datasets/neopjuka/generated_adversarial/20260428_223142/data
+  adversarial_max_samples: 20
+  near_miss_phrases:
+  - 넌죽아
+  - 넙넙아
+  - 넌넌아
+  - 넙죽이
+  - 넙족아
+  - 넙즉아
+  - 죽넙아
+  - 넙아죽
+  adversarial_skip_qc: false
+  dry_run: false
+prepare_features:
+  enabled: true
+  positive_wavs: ../datasets/neopjuka/generated_samples/20260428_223142/data
+  positive_features_dir: ../features/neopjuka/generated_augmented_features/20260428_223142/data
+  negative_features_root: ../features/neopjuka/negative_datasets/20260428_223142/data
+  background_audio_dir:
+  - ../datasets/neopjuka/negative_audio/20260428_223142/data/fma_16k
+  - ../datasets/neopjuka/negative_audio/20260428_223142/data/audioset_16k
+  rir_dir:
+  - ../datasets/neopjuka/negative_audio/20260428_223142/data/mit_rirs
+  split_seed: 10
+  split_count: 0.1
+  train_repeat: 2
+  augmentation_duration_s: 3.2
+  background_min_snr_db: -5
+  background_max_snr_db: 10
+  min_gain_db: -18.0
+  max_gain_db: 3.0
+  min_jitter_s: 0.195
+  max_jitter_s: 0.205
+  augmentation_probabilities:
+    SevenBandParametricEQ: 0.1
+    TanhDistortion: 0.1
+    PitchShift: 0.1
+    BandStopFilter: 0.1
+    AddColorNoise: 0.1
+    AddBackgroundNoise: 0.75
+    Gain: 1.0
+    RIR: 0.5
+  skip_negative_download: false
+  clear_positive_output: true
+train:
+  enabled: true
+  training_yaml: ../training/neopjuka/wakeword/20260428_223142/data/training_parameters.yaml
+  positive_features_dir: ../features/neopjuka/generated_augmented_features/20260428_223142/data
+  negative_features_root: ../features/neopjuka/negative_datasets/20260428_223142/data
+  train_dir: ../models/neopjuka/train/20260428_223142/data
+  training_steps: 10000
+  batch_size: 128
+  eval_step_interval: 500
+  train_summary_step_interval: 1
+  train_summary_flush_interval: 50
+  clip_duration_ms: 1500
+  negative_class_weight: 20
+  positive_class_weight: 1
+  auto_prepare_features: true
+  prepare_positive_wavs: ../datasets/neopjuka/generated_samples/20260428_223142/data
+  prepare_background_audio_dir:
+  - ../datasets/neopjuka/negative_audio/20260428_223142/data/fma_16k
+  - ../datasets/neopjuka/negative_audio/20260428_223142/data/audioset_16k
+  prepare_rir_dir:
+  - ../datasets/neopjuka/negative_audio/20260428_223142/data/mit_rirs
+  prepare_split_seed: 10
+  prepare_split_count: 0.1
+  prepare_train_repeat: 2
+  prepare_augmentation_duration_s: 3.2
+  prepare_background_min_snr_db: -5
+  prepare_background_max_snr_db: 10
+  prepare_min_gain_db: -18.0
+  prepare_max_gain_db: 3.0
+  prepare_min_jitter_s: 0.195
+  prepare_max_jitter_s: 0.205
+  prepare_augmentation_probabilities:
+    SevenBandParametricEQ: 0.1
+    TanhDistortion: 0.1
+    PitchShift: 0.1
+    BandStopFilter: 0.1
+    AddColorNoise: 0.1
+    AddBackgroundNoise: 0.75
+    Gain: 1.0
+    RIR: 0.5
+  prepare_skip_negative_download: false
+  prepare_clear_positive_output: true
+  train: true
+  restore_checkpoint: true
+eval:
+  enabled: true
+  model: ../models/neopjuka/train/20260428_223142/data/tflite_stream_state_internal_quant/stream_state_internal_quant.tflite
+  positives: ../datasets/neopjuka/eval_holdout/20260428_223142/data/positive_test_split
+  negatives: ../datasets/neopjuka/negative_audio/20260428_223142/data/fma_16k
+  cutoff: 0.78
+  target_faph: 0.5
+  auto_bootstrap_positives: true
+  bootstrap_source: ../datasets/neopjuka/generated_samples/20260428_223142/data
+  bootstrap_seed: 10
+  bootstrap_split_count: 0.1
+export:
+  enabled: true
+  model: ../models/neopjuka/train/20260428_223142/data/tflite_stream_state_internal_quant/stream_state_internal_quant.tflite
+  release_path: ../models/neopjuka/release/wake_nubjuk_ko.tflite
+  manifest_path: ../models/neopjuka/release/wake_nubjuk_ko.json
+  wake_word: 넙죽아
+  author: UnripePlum
+  website: null
+  trained_language: ko
+  probability_cutoff: 0.78
+  sliding_window_size: 5
+  feature_step_size: 10
+  tensor_arena_size: 50000
+  minimum_esphome_version: '2024.7'

@@ -9,9 +9,15 @@ from pathlib import Path
 
 import numpy as np
 import yaml
-from microwakeword.inference import Model
 from numpy.lib.stride_tricks import sliding_window_view
 from scipy.io import wavfile
+
+from mcu_wakeword.paths import (
+    DEFAULT_EVAL_NEGATIVES_DIR,
+    DEFAULT_GENERATED_SAMPLES_DIR,
+    DEFAULT_MODEL_PATH,
+)
+from mcu_wakeword_engine.inference import Model
 
 
 @dataclass
@@ -135,21 +141,19 @@ def main() -> int:
     parser.add_argument(
         "--model",
         type=Path,
-        default=Path(
-            "microWakeWord/notebooks/trained_models/wakeword/tflite_stream_state_internal_quant/stream_state_internal_quant.tflite"
-        ),
+        default=DEFAULT_MODEL_PATH,
         help="Path to quantized streaming TFLite model",
     )
     parser.add_argument(
         "--positives",
         type=Path,
-        default=Path("microWakeWord/notebooks/generated_samples"),
+        default=DEFAULT_GENERATED_SAMPLES_DIR,
         help="Positive wav file or directory",
     )
     parser.add_argument(
         "--negatives",
         type=Path,
-        default=Path("microWakeWord/notebooks/fma_16k"),
+        default=DEFAULT_EVAL_NEGATIVES_DIR,
         help="Negative wav file or directory",
     )
     parser.add_argument("--glob", default="*.wav", help="Glob pattern for directories")

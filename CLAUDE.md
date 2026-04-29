@@ -36,7 +36,7 @@ Python 학습 파이프라인. "넙죽 훈련병" 한국어 wake word 모델을 
 → 이 계약은 mcu 의 audio frame slicing / TFLM 입력 텐서 모양과 직접 결합. 변경 시 mcu 에서 코드/sdkconfig 동기 변경 필요 → 반드시 사용자 확인.
 
 ### Phase 순서 (잠금)
-- Phase 0 → 1 → 2 → 3 → 4 → 5 순서. 임의 변경 금지.
+- Phase 1 → 2 → 3 → 4 순서. 임의 변경 금지.
 - 자세한 task 는 `PHASES.md`.
 
 ---
@@ -66,4 +66,4 @@ Python 학습 파이프라인. "넙죽 훈련병" 한국어 wake word 모델을 
 | `CLAUDE.md` (이 파일) | 작업 규칙 + 잠금 정책 |
 | `ARCHITECTURE.md` | 학습 파이프라인, 데이터 흐름 |
 | `INTERFACES.md` | 모델 아티팩트 계약 (mcu 핸드오프) |
-| `PHASES.md` | Phase 0~5 구현 task + Gate 기준 |
+| `PHASES.md` | 4-Phase 구현 task + Gate 기준 |

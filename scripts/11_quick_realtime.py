@@ -9,9 +9,10 @@ import time
 from pathlib import Path
 
 import numpy as np
-import yaml
-from microwakeword.inference import Model
 from numpy.lib.stride_tricks import sliding_window_view
+
+from mcu_wakeword.paths import DEFAULT_MODEL_PATH
+from mcu_wakeword_engine.inference import Model
 
 
 def moving_average(values: np.ndarray, window: int) -> np.ndarray:
@@ -21,13 +22,6 @@ def moving_average(values: np.ndarray, window: int) -> np.ndarray:
 
 
 def infer_stride(model_path: Path) -> int:
-    training_cfg = model_path.parent.parent / "training_config.yaml"
-    if training_cfg.exists():
-        try:
-            cfg = yaml.load(training_cfg.read_text(), Loader=yaml.Loader)
-            return int(cfg.get("flags", {}).get("stride", 1))
-        except Exception:
-            pass
     return 1
 
 
@@ -36,14 +30,12 @@ def main() -> int:
     parser.add_argument(
         "--model",
         type=Path,
-        default=Path(
-            "microWakeWord/notebooks/trained_models/wakeword/tflite_stream_state_internal_quant/stream_state_internal_quant.tflite"
-        ),
+        default=DEFAULT_MODEL_PATH,
     )
     parser.add_argument("--threshold", type=float, default=0.78)
     parser.add_argument("--sample-rate", type=int, default=16000)
     parser.add_argument("--step-ms", type=int, default=10)
-    parser.add_argument("--block-ms", type=int, default=250)
+    parser.add_argument("--block-ms", type=int, default=10)
     parser.add_argument("--ma-window", type=int, default=4)
     parser.add_argument("--cooldown-ms", type=int, default=900)
     parser.add_argument("--device", default=None)

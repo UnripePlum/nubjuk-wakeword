@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
-# Phase 2 — microWakeWord 학습
+# Phase 2 — 내부 wakeword 엔진 학습
 set -euo pipefail
-python -m nubjuk_wakeword.cli train "$@"
+python -m mcu_wakeword.cli train "$@"

@@ -6,22 +6,25 @@
 
 ## 모델 아티팩트 계약 (mcu 핸드오프)
 
-`models/release/wake_nubjuk_ko.tflite` — 이 파일은 mcu 가 펌웨어에 임베드하여 `wake_engine_microwakeword.c` 가 TFLite Micro 로 inference 실행.
+`models/<target_slug>/release/wake_nubjuk_ko.tflite` + `wake_nubjuk_ko.json` — mcu 가 펌웨어에 임베드하여 `wake_engine_microwakeword.c` 가 TFLite Micro 로 inference 실행.
 
 ### 입력 텐서
 
 | 속성 | 값 |
 |------|------|
 | Sample rate | **16 kHz** mono |
-| 형식 | int16 PCM (마이크 raw) → microWakeWord 측에서 feature 변환 |
+| 형식 | int16 PCM (마이크 raw) → 내부 엔진에서 feature 변환 |
 | Frame hop | **32 ms** (512 samples @ 16kHz) |
-| Window | microWakeWord 기본 (모델 종류별 1.5s ~ 2.0s rolling buffer) |
-| Feature | 40-bin log-mel spectrogram (microWakeWord 기본값) |
+| Window | 내부 엔진 기본 (모델 종류별 1.5s ~ 2.0s rolling buffer) |
+| Frontend | mcu 측 C audio frontend (`esp-micro-speech-features` / TFLM microfrontend 계열) |
+| Feature | 40-bin int8 log-mel feature, `feature_step_size=10ms` |
+| Wake model input | `[1, 3, 40]` int8 |
 
 mcu 측 매칭:
 - I2S DMA: 16 kHz, mono, 32-bit slot → int16 변환 (mcu PHASES.md §1.1)
 - DMA buffer: count=4, length=512 samples
 - voice_task 가 frame 단위로 `wake_engine.process_audio(pcm, 512)` 호출
+- wake_engine 내부 ring buffer 가 10ms 단위 feature 를 생성하고 최근 3개 feature 를 wake model 에 입력
 
 ### 출력 텐서
 
@@ -46,45 +49,40 @@ mcu 측 매칭:
 - 모델 size 권장: ≤ 100 KB (int8 quantized)
 - Tensor arena size: 모델 export 시 측정해서 mcu 에 전달 (기본 30~50 KB)
 
-### 메타데이터
+### microWakeWord manifest
 
-`models/release/wake_nubjuk_ko.metadata.json` 으로 동봉:
+`models/<target_slug>/release/wake_nubjuk_ko.json` 으로 동봉:
 
 ```json
 {
-  "model_name": "wake_nubjuk_ko",
-  "version": "0.1.0",
-  "trained_at": "2026-04-27T00:00:00Z",
-  "git_commit": "...",
-  "training_data": {
-    "manifest": "data/manifests/v0.1.0.csv",
-    "positive_samples": 0,
-    "negative_samples": 0
-  },
-  "metrics": {
-    "far_per_hour": 0.0,
-    "frr": 0.0,
-    "threshold_recommended": 0.5
-  },
-  "tflm": {
-    "tensor_arena_bytes": 0,
-    "model_size_bytes": 0,
-    "input_shape": [1, 40, 49, 1],
-    "output_shape": [1, 1]
+  "type": "micro",
+  "wake_word": "넙죽아",
+  "author": "UnripePlum",
+  "model": "wake_nubjuk_ko.tflite",
+  "trained_languages": ["ko"],
+  "version": 2,
+  "micro": {
+    "probability_cutoff": 0.78,
+    "sliding_window_size": 5,
+    "feature_step_size": 10,
+    "tensor_arena_size": 50000,
+    "minimum_esphome_version": "2024.7"
   }
 }
 ```
+
+`audio_preprocessor_int8.tflite` 는 릴리스 필수 산출물이 아니다. mcu 런타임은 ESPHome microWakeWord 와 같은 방식으로 C audio frontend 를 사용한다.
 
 ---
 
 ## 산출물 핸드오프 절차
 
 1. wakeword 세션에서 학습/평가/export 완료
-2. `models/release/wake_nubjuk_ko.tflite` + `wake_nubjuk_ko.metadata.json` 갱신 commit
+2. `models/<target_slug>/release/wake_nubjuk_ko.tflite` + `wake_nubjuk_ko.json` 갱신 commit
 3. git tag (예: `v0.1.0`) 생성 후 push
-4. mcu 세션에서 `cp wakeword/models/release/wake_nubjuk_ko.tflite mcu/main/wake/`
+4. mcu 세션에서 `cp wakeword/models/<target_slug>/release/wake_nubjuk_ko.* mcu/main/wake/`
 5. mcu 측 `wake_engine_microwakeword.c` 가 `COMPONENT_EMBED_FILES` 로 펌웨어 임베드
-6. mcu 측 `tensor_arena_size` config 를 metadata 의 값으로 갱신
+6. mcu 측 `tensor_arena_size` / threshold config 를 manifest 의 값으로 갱신
 
 ---
 
@@ -94,6 +92,7 @@ mcu 측 매칭:
 - Frame hop (32 ms = 512 samples)
 - Output dtype (int8 quantized)
 - 출력 파일명 (`wake_nubjuk_ko.tflite`)
+- Manifest 파일명 (`wake_nubjuk_ko.json`)
 - Output range / sigmoid 가정
 
 ---

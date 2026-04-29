@@ -9,9 +9,11 @@ from pathlib import Path
 
 import numpy as np
 import yaml
-from microwakeword.inference import Model
 from numpy.lib.stride_tricks import sliding_window_view
 from scipy.io import wavfile
+
+from mcu_wakeword.paths import DEFAULT_MODEL_PATH
+from mcu_wakeword_engine.inference import Model
 
 
 def _read_wav_16k_mono(path: Path) -> np.ndarray:
@@ -69,7 +71,7 @@ def _infer_stride_from_model(model_path: Path) -> tuple[int, str]:
         try:
             cfg = yaml.load(training_cfg.read_text(), Loader=yaml.Loader)
             stride = int(cfg.get("flags", {}).get("stride", 1))
-            return stride, f"auto:{training_cfg}"
+            return 1, f"forced:1 (training_stride={stride} from {training_cfg})"
         except Exception:
             pass
     return 1, "default:1"
@@ -80,9 +82,7 @@ def main() -> int:
     parser.add_argument(
         "--model",
         type=Path,
-        default=Path(
-            "microWakeWord/notebooks/trained_models/wakeword/tflite_stream_state_internal_quant/stream_state_internal_quant.tflite"
-        ),
+        default=DEFAULT_MODEL_PATH,
         help="Path to quantized streaming TFLite model",
     )
     parser.add_argument(
@@ -118,7 +118,7 @@ def main() -> int:
         "--stride",
         type=int,
         default=None,
-        help="Model stride in feature frames. If omitted, infer from model training_config.yaml",
+        help="Model stride in feature frames. If omitted, runtime default is 1 (10ms checks)",
     )
     parser.add_argument(
         "--no-reset-state",

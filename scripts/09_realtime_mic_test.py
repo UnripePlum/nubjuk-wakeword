@@ -13,8 +13,10 @@ from pathlib import Path
 
 import numpy as np
 import yaml
-from microwakeword.inference import Model
 from numpy.lib.stride_tricks import sliding_window_view
+
+from mcu_wakeword.paths import DEFAULT_MODEL_PATH
+from mcu_wakeword_engine.inference import Model
 
 
 def _moving_average(values: np.ndarray, window: int) -> np.ndarray:
@@ -23,6 +25,26 @@ def _moving_average(values: np.ndarray, window: int) -> np.ndarray:
     if values.size < window:
         return values
     return sliding_window_view(values, window).mean(axis=1)
+
+
+def _compute_vad_speech_ratio(
+    block_pcm16: np.ndarray,
+    sample_rate: int,
+    frame_ms: int,
+    vad,
+) -> float:
+    frame_samples = int(sample_rate * frame_ms / 1000)
+    if frame_samples <= 0 or block_pcm16.size < frame_samples:
+        return 0.0
+    usable = block_pcm16[: block_pcm16.size - (block_pcm16.size % frame_samples)]
+    if usable.size == 0:
+        return 0.0
+    frames = usable.reshape(-1, frame_samples)
+    speech_frames = 0
+    for frame in frames:
+        if vad.is_speech(frame.tobytes(), sample_rate):
+            speech_frames += 1
+    return speech_frames / float(frames.shape[0])
 
 
 def _infer_stride_from_model(model_path: Path) -> tuple[int, str]:
@@ -42,18 +64,16 @@ def main() -> int:
     parser.add_argument(
         "--model",
         type=Path,
-        default=Path(
-            "microWakeWord/notebooks/trained_models/wakeword/tflite_stream_state_internal_quant/stream_state_internal_quant.tflite"
-        ),
+        default=DEFAULT_MODEL_PATH,
         help="Path to TFLite streaming model",
     )
-    parser.add_argument("--cutoff", type=float, default=0.68, help="Detection cutoff")
+    parser.add_argument("--cutoff", type=float, default=0.82, help="Detection cutoff")
     parser.add_argument("--sample-rate", type=int, default=16000, help="Mic sample rate")
     parser.add_argument(
         "--block-ms",
         type=int,
-        default=200,
-        help="Audio block size in milliseconds",
+        default=10,
+        help="Audio block size in milliseconds (10ms for frame-level checks)",
     )
     parser.add_argument(
         "--step-ms",
@@ -65,7 +85,7 @@ def main() -> int:
         "--stride",
         type=int,
         default=None,
-        help="Model stride. If omitted, infer from model training_config.yaml",
+        help="Model stride. If omitted, runtime default is 1 (10ms checks)",
     )
     parser.add_argument(
         "--ma-window",
@@ -130,8 +150,63 @@ def main() -> int:
     parser.add_argument(
         "--trigger-hold-blocks",
         type=int,
-        default=2,
+        default=6,
         help="Require this many consecutive above-cutoff blocks before detection",
+    )
+    parser.add_argument(
+        "--activation-window-ms",
+        type=int,
+        default=300,
+        help="Window (ms) for trigger-score moving-average gate",
+    )
+    parser.add_argument(
+        "--activation-mean-threshold",
+        type=float,
+        default=0.55,
+        help="Minimum mean trigger score in activation window",
+    )
+    parser.add_argument(
+        "--require-vad",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Require VAD speech gate before allowing detect",
+    )
+    parser.add_argument(
+        "--vad-aggressiveness",
+        type=int,
+        default=2,
+        help="WebRTC VAD aggressiveness (0=least, 3=most strict)",
+    )
+    parser.add_argument(
+        "--vad-frame-ms",
+        type=int,
+        default=10,
+        choices=(10, 20, 30),
+        help="WebRTC VAD frame size in ms",
+    )
+    parser.add_argument(
+        "--min-speech-ratio",
+        type=float,
+        default=0.5,
+        help="Minimum speech-frame ratio per block to count as speech",
+    )
+    parser.add_argument(
+        "--speech-hold-blocks",
+        type=int,
+        default=4,
+        help="Require this many consecutive speech blocks before detection",
+    )
+    parser.add_argument(
+        "--min-mic-dbfs",
+        type=float,
+        default=-55.0,
+        help="Ignore detect when mic loudness is below this dBFS",
+    )
+    parser.add_argument(
+        "--max-clipped-ratio",
+        type=float,
+        default=0.02,
+        help="Ignore detect when clipped sample ratio exceeds this threshold",
     )
     parser.add_argument(
         "--print-every-s",
@@ -180,6 +255,10 @@ def main() -> int:
         print(f"Model file not found: {args.model}")
         return 2
 
+    if not (0 <= args.vad_aggressiveness <= 3):
+        print("--vad-aggressiveness must be in [0, 3]")
+        return 2
+
     device_arg = args.device
     if isinstance(device_arg, str):
         stripped = device_arg.strip()
@@ -192,15 +271,36 @@ def main() -> int:
         return 2
 
     if args.stride is None:
-        stride, stride_source = _infer_stride_from_model(args.model)
+        train_stride, train_stride_source = _infer_stride_from_model(args.model)
+        stride = 1
+        stride_source = (
+            f"forced:1 (10ms runtime check, training_stride={train_stride} from "
+            f"{train_stride_source})"
+        )
     else:
         stride, stride_source = args.stride, "cli"
 
     model = Model(str(args.model), stride=stride)
+    rolling_model = Model(str(args.model), stride=stride)
     q: queue.Queue[np.ndarray] = queue.Queue()
     prob_history: deque[float] = deque(maxlen=args.history_frames)
     score_history: deque[float] = deque(maxlen=args.history_frames)
     rolling_audio = np.zeros(0, dtype=np.int16)
+    activation_blocks = max(1, int(round(args.activation_window_ms / max(1, args.block_ms))))
+    activation_history: deque[float] = deque(maxlen=activation_blocks)
+    vad = None
+    if args.require_vad:
+        try:
+            import webrtcvad
+
+            vad = webrtcvad.Vad(args.vad_aggressiveness)
+        except ModuleNotFoundError:
+            print("[warn] webrtcvad is not installed; disabling VAD gate.")
+            print("       install: source .venv/bin/activate && pip install webrtcvad-wheels")
+            vad = None
+        except Exception as exc:
+            print(f"[warn] failed to initialize VAD ({type(exc).__name__}: {exc})")
+            vad = None
 
     def audio_callback(indata, frames, _time, status):
         if status:
@@ -227,6 +327,18 @@ def main() -> int:
     )
     print(f"trigger_hold_blocks={args.trigger_hold_blocks}")
     print(f"trigger_frames_per_block={trigger_frames}")
+    print(
+        f"activation_window_ms={args.activation_window_ms} "
+        f"activation_blocks={activation_blocks} "
+        f"activation_mean_threshold={args.activation_mean_threshold:.3f}"
+    )
+    print(
+        f"vad_enabled={int(vad is not None)} vad_frame_ms={args.vad_frame_ms} "
+        f"min_speech_ratio={args.min_speech_ratio:.2f} speech_hold_blocks={args.speech_hold_blocks}"
+    )
+    print(
+        f"min_mic_dbfs={args.min_mic_dbfs:.1f} max_clipped_ratio={args.max_clipped_ratio:.3f}"
+    )
     print("Speak your wakeword. Press Ctrl+C to stop.")
 
     cooldown_until = 0.0
@@ -235,6 +347,7 @@ def main() -> int:
     armed = True
     below_rearm_blocks = 0
     above_trigger_blocks = 0
+    speech_hold_blocks = 0
 
     try:
         with sd.InputStream(
@@ -266,9 +379,8 @@ def main() -> int:
                     if rolling_audio.size < max(1, rolling_min_samples):
                         continue
 
-                    # Use a fresh interpreter for each rolling-window score to avoid
-                    # model-state carryover artifacts between windows.
-                    rolling_model = Model(str(args.model), stride=stride)
+                    # Reset streaming state for deterministic rolling-window scoring.
+                    rolling_model.reset_state()
                     probs = np.asarray(
                         rolling_model.predict_clip(rolling_audio, step_ms=args.step_ms),
                         dtype=np.float32,
@@ -284,6 +396,24 @@ def main() -> int:
                 mic_rms = float(np.sqrt(np.mean(np.square(block_float))))
                 mic_dbfs = 20.0 * np.log10(max(mic_rms, 1e-8))
                 mic_peak = float(np.max(np.abs(block_float)))
+                clipped_ratio = float(np.mean(np.abs(block_float) >= 0.999))
+                speech_ratio = (
+                    _compute_vad_speech_ratio(
+                        block,
+                        sample_rate=args.sample_rate,
+                        frame_ms=args.vad_frame_ms,
+                        vad=vad,
+                    )
+                    if vad is not None
+                    else 1.0
+                )
+                if speech_ratio >= args.min_speech_ratio:
+                    speech_hold_blocks += 1
+                else:
+                    speech_hold_blocks = 0
+                speech_gate_ok = speech_hold_blocks >= max(1, args.speech_hold_blocks)
+                loudness_gate_ok = mic_dbfs >= args.min_mic_dbfs
+                clipping_gate_ok = clipped_ratio <= args.max_clipped_ratio
 
                 block_probs_smoothed = _moving_average(probs, args.ma_window)
                 block_ma_max = (
@@ -315,6 +445,12 @@ def main() -> int:
                 else:
                     recent_scores = probs[-trigger_frames:]
                 trigger_score = float(np.max(recent_scores))
+                activation_history.append(trigger_score)
+                activation_mean = (
+                    float(np.mean(np.asarray(activation_history, dtype=np.float32)))
+                    if activation_history
+                    else 0.0
+                )
 
                 now = time.monotonic()
                 if not armed:
@@ -326,7 +462,14 @@ def main() -> int:
                     else:
                         below_rearm_blocks = 0
 
-                if trigger_score >= args.cutoff:
+                trigger_ready = (
+                    (trigger_score >= args.cutoff)
+                    and (activation_mean >= args.activation_mean_threshold)
+                    and speech_gate_ok
+                    and loudness_gate_ok
+                    and clipping_gate_ok
+                )
+                if trigger_ready:
                     above_trigger_blocks += 1
                 else:
                     above_trigger_blocks = 0
@@ -337,7 +480,11 @@ def main() -> int:
                     and above_trigger_blocks >= max(1, args.trigger_hold_blocks)
                 ):
                     print(
-                        f"[DETECT] trigger={trigger_score:.3f} current={score:.3f} peak_recent={peak_recent:.3f} cutoff={args.cutoff:.3f} hold_blocks={above_trigger_blocks}"
+                        "[DETECT] "
+                        f"trigger={trigger_score:.3f} current={score:.3f} peak_recent={peak_recent:.3f} "
+                        f"cutoff={args.cutoff:.3f} hold_blocks={above_trigger_blocks} "
+                        f"activation_mean={activation_mean:.3f} "
+                        f"speech_ratio={speech_ratio:.2f} mic_dbfs={mic_dbfs:.1f} clip_ratio={clipped_ratio:.3f}"
                     )
                     cooldown_until = now + (args.cooldown_ms / 1000.0)
                     armed = False
@@ -346,7 +493,14 @@ def main() -> int:
 
                 if (now - last_print) >= args.print_every_s:
                     print(
-                        f"[score] current={score:.3f} peak_recent={peak_recent:.3f} block_ma_max={block_ma_max:.3f} trigger={trigger_score:.3f} above_trigger_blocks={above_trigger_blocks} mic_dbfs={mic_dbfs:.1f} mic_peak={mic_peak:.3f} armed={int(armed)} below_rearm_blocks={below_rearm_blocks} cooldown_left={max(0.0, cooldown_until-now):.2f}s"
+                        "[score] "
+                        f"current={score:.3f} peak_recent={peak_recent:.3f} block_ma_max={block_ma_max:.3f} "
+                        f"trigger={trigger_score:.3f} activation_mean={activation_mean:.3f} ready={int(trigger_ready)} "
+                        f"speech_ratio={speech_ratio:.2f} speech_hold={speech_hold_blocks} "
+                        f"mic_dbfs={mic_dbfs:.1f} mic_peak={mic_peak:.3f} clip_ratio={clipped_ratio:.3f} "
+                        f"gates(act={int(activation_mean >= args.activation_mean_threshold)},speech={int(speech_gate_ok)},loud={int(loudness_gate_ok)},clip={int(clipping_gate_ok)}) "
+                        f"above_trigger_blocks={above_trigger_blocks} armed={int(armed)} "
+                        f"below_rearm_blocks={below_rearm_blocks} cooldown_left={max(0.0, cooldown_until-now):.2f}s"
                     )
                     last_print = now
     except KeyboardInterrupt:

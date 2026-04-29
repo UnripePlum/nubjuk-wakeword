@@ -1,127 +1,120 @@
-# wakeword — Phase별 구현 계획
+# wakeword — 4-Phase 구현 계획 (ESP32 중심)
 
-> Phase 0 → 1 → 2 → 3 → 4 → 5 순서대로. 임의 변경 금지.
-> 모델 아티팩트 계약은 `INTERFACES.md` 잠금 — 그대로 만족해야 함.
-
----
-
-## Phase 0 — 부트스트랩 (환경)
-
-**목표**: 학습을 돌릴 수 있는 환경을 갖춘다.
-
-- [ ] Python 3.10+ 가상환경
-- [ ] `pip install -e .` 로 의존성 설치 (microWakeWord, tensorflow, qwen-tts, librosa)
-- [ ] GPU 환경 결정 (로컬 Mac MPS / Colab T4 / Cloud) — `ARCHITECTURE.md` 참고
-- [ ] Qwen TTS 모델 다운로드/캐시 준비 (`Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign`)
-- [ ] `python -m nubjuk_wakeword.cli check-env` 로 의존성 검증
-- [ ] `data/manifests/` 디렉토리 git 추적 (`.gitkeep`)
-
-**Gate**: `check-env` 가 모든 의존성 OK 출력.
+> 목표: **ESP32 on-device** 기준으로 wake word 정확도/오탐을 개선한다.
+> 원칙: **micro-wake-word 런타임 베이스 유지**, LiveKit은 **데이터 생성/증강/평가 철학만 차용**한다.
 
 ---
 
-## Phase 1 — 데이터 수집
+## Phase 1 — 런타임 고정 + 베이스라인 계측
 
-**목표**: positive ("넙죽아") + negative (일반 한국어, 유사어) 데이터셋 구축.
+**목표**
+- 입력 표현/런타임 불일치를 제거하고, 현재 성능을 수치화한다.
 
-### 1.1 Qwen 합성 positive
-- [ ] `scripts/01_synth_qwen.sh` (또는 `cli synth`) — 한국어 입력으로 다양 변주 생성
-- [ ] 합성 변수: language, style prompt, batch_size, max_samples
-- [ ] 합성량: 100~500 샘플 (학습 부트스트랩용)
-- [ ] 출력: `microWakeWord/notebooks/generated_samples/*.wav`
-- [ ] QC manifest: `generated_samples/qwen_qc_manifest.csv`
+**작업**
+- [ ] 런타임 전제 고정:
+  - `micro_speech` 계열 40-d feature + TFLite Micro(ESP32) 경로 유지
+  - LiveKit ONNX frontend/embedding runtime 포팅 시도 금지
+- [ ] 베이스라인 모델 1개를 고정 파라미터로 재현 실행
+- [ ] 계측 파이프라인 정리:
+  - host: 학습/검증 곡선 (`validation_history.csv`, `validation_curves.png`)
+  - device: `latency_us`, `trigger_count`, `heap`, `arena` 로그 포맷
+- [ ] 기본 threshold/cooldown 스윕 스크립트 준비
 
-### 1.2 Real human positive
-- [ ] 5~10명 × ~20회 녹음 (다양한 거리·노이즈 환경)
-- [ ] 16 kHz mono WAV 로 저장
-- [ ] 출력: `data/raw/positive/{speaker_id}/*.wav` + `data/manifests/raw_positive.csv`
-- [ ] 동의서·개인정보 처리는 사람 일
+**산출물**
+- `models/<target_slug>/train/<run_id>/...` 베이스라인 체크포인트
+- 베이스라인 리포트 1개 (FAPH, FRR, latency, arena)
 
-### 1.3 Negative dataset
-- [ ] **일반 한국어 corpus** — KSS, KsponSpeech 일부 추출 (1~2시간)
-- [ ] **Adversarial set** — "넙죽이", "훈련", "넙적", "훈련병" 등 부분 일치 단어
-- [ ] **Silence + noise** — 카페·집·옥외 환경 noise (Freesound, MUSAN)
-- [ ] 출력: `data/raw/negative/**` + `data/manifests/raw_negative.csv`
-
-### 1.4 Augmentation
-- [ ] `scripts/02_augment.sh` — room IR, noise mix, speed/pitch perturbation
-- [ ] 출력: `data/processed/**` + `data/manifests/processed.csv`
-
-**Gate**: positive 5분+ / negative 1시간+ / processed manifest version v0.1.0 commit.
+**Gate**
+- 같은 설정으로 2회 재실행 시 지표 재현성 확보
+- 베이스라인 `FAPH/FRR/latency` 수치가 문서화됨
 
 ---
 
-## Phase 2 — 학습
+## Phase 2 — LiveKit식 데이터 파이프라인 이식
 
-**목표**: microWakeWord 로 baseline 모델 학습.
+**목표**
+- 모델보다 먼저 데이터 다양성을 강화해 오탐에 강한 학습셋을 만든다.
 
-- [ ] `src/nubjuk_wakeword/train/config.py` — hyperparameter 정의
-- [ ] `scripts/03_train.sh` — 학습 진입점
-- [ ] microWakeWord 가 정한 model arch (CNN streaming) 채택
-- [ ] Train/val split 80/20, seed 고정
-- [ ] 학습 결과: `models/checkpoints/{run_id}/` (gitignore)
-- [ ] TensorBoard / wandb 로 학습 곡선 모니터링 (선택)
+**작업**
+- [ ] 합성 positive 다양화:
+  - 속도/스타일/화자 다양성 확대
+  - 최소 1개 preview + 대량 생성 분리 유지
+- [ ] adversarial negative 강화:
+  - wakeword 유사 발음(near-miss) 자동/수동 리스트 확장
+  - `generated_adversarial` 별도 목적 폴더 운영
+- [ ] waveform-level augmentation 강화:
+  - RIR, background SNR, EQ/distortion 범위 점검
+  - rounds/SNR 정책을 YAML로 고정
+- [ ] 평가용 ambient/negative 세트 장시간 확보
+- [ ] 데이터셋 manifest/QC 결과 저장 체계 고정
 
-**Gate**: validation accuracy ≥ 0.95, val loss converged.
+**산출물**
+- `datasets/<target_slug>/<purpose>/<timestamp>/data` 구조의 확정본
+- 합성/QC/near-miss 규칙 문서
 
----
-
-## Phase 3 — 평가 + threshold 캘리브레이션
-
-**목표**: FAR/FRR 측정 + operating threshold 결정.
-
-- [ ] `scripts/04_eval.sh` — hold-out test set 으로 평가
-- [ ] **FAR (False Accept Rate)**: negative 1시간 분량을 stream 으로 흘려 false trigger 횟수 측정 → /hour 단위
-  - 목표: ≤ 0.5/hr
-- [ ] **FRR (False Reject Rate)**: positive hold-out 에서 miss 비율
-  - 목표: ≤ 5%
-- [ ] **Latency**: wake word 시작 ~ 검출 시점 평균 (ms)
-  - 목표: < 200 ms
-- [ ] ROC 곡선 그려서 operating threshold 결정 → metadata 에 기록
-- [ ] **Adversarial check**: "넙죽이", "훈련" 등 false trigger 율 별도 측정
-
-**Gate**: FAR/FRR/latency 목표 달성. 미달 시 Phase 1~2 로 회귀.
+**Gate**
+- 학습용 positive/negative/adversarial/ambient 수량 목표 충족
+- QC 통과율/탈락 사유가 manifest로 추적 가능
 
 ---
 
-## Phase 4 — TFLite export + 양자화
+## Phase 3 — 모델 스윕 + INT8 양자화
 
-**목표**: TFLM 호환 int8 quantized 모델 산출.
+**목표**
+- MCU 친화 후보(소형 CNN 계열)를 동일 데이터로 비교하고 INT8까지 확정한다.
 
-- [ ] `scripts/05_export_release.sh` — 진입점
-- [ ] Keras → TFLite 변환
-- [ ] int8 PTQ (Post-Training Quantization), representative dataset = 학습 데이터 100 샘플
-- [ ] **TFLM 호환 검증**: 사용 op set 이 ESP-IDF `esp-tflite-micro` 가 지원하는지 확인
-- [ ] **모델 size 측정**: ≤ 100 KB 권장
-- [ ] **Tensor arena size 측정**: TFLM interpreter 로 실제 메모리 사용량 측정
-- [ ] **Quantized vs float 정확도 비교**: drop ≤ 2%p 허용
+**작업**
+- [ ] 모델 후보 2종 우선 비교:
+  - DS-CNN-lite
+  - MixConv-lite (현재 엔진 계열 포함)
+- [ ] 공통 프로토콜로 학습/검증:
+  - 동일 split, 동일 eval interval, 동일 metric 저장
+- [ ] Full INT8 변환 강제:
+  - representative dataset 사용
+  - unsupported op 발생 시 실패 처리
+- [ ] 체크포인트/threshold 후보 자동 기록
 
-**Gate**: int8 TFLite 모델이 TFLM 호환 + size/arena 목표 달성 + 정확도 유지.
+**산출물**
+- 후보별 비교표: `FAPH`, `FRR`, `recall@no_faph`, `latency`, `model_size`, `arena`
+- TFLite INT8 후보 모델
 
----
-
-## Phase 5 — Release + mcu 핸드오프
-
-**목표**: 모델 아티팩트 release + mcu 임베드 가능 상태.
-
-- [ ] `models/release/wake_nubjuk_ko.tflite` 갱신 commit
-- [ ] `models/release/wake_nubjuk_ko.metadata.json` 갱신 (`INTERFACES.md` 형식)
-- [ ] git tag (예: `v0.1.0`) + push
-- [ ] mcu 세션에 핸드오프 알림: 파일 경로, tensor_arena_size, threshold 값 전달
-- [ ] mcu 측에서 `cp` + `COMPONENT_EMBED_FILES` 갱신 (mcu 세션 책임)
-- [ ] **End-to-end smoke test**: ESP32 보드에서 실제 wake 검출 동작 확인 (mcu 세션 협업)
-
-**Gate**: ESP32 펌웨어가 모델을 임베드해서 `WAKE_EV_DETECTED` 이벤트를 발화함이 확인됨.
+**Gate**
+- 최소 1개 후보가 베이스라인 대비 오탐-미탐 트레이드오프 개선
+- INT8 모델이 변환/로딩/기본 추론 테스트 통과
 
 ---
 
-## Phase 5 이후 — 반복 개선
+## Phase 4 — 디바이스 검증 + 릴리스
 
-Release 후 새로운 데이터·튜닝이 필요하면 Phase 1~5 반복. 각 release 는 git tag + metadata 갱신.
+**목표**
+- 실사용 조건에서 threshold를 확정하고 release 모델을 배포 가능 상태로 만든다.
 
-| 트리거 | 작업 |
-|--------|------|
-| FRR 너무 높음 (실사용 miss 다수) | Phase 1.2 로 real recording 추가 → 재학습 |
-| FAR 너무 높음 (오탐 다수) | Phase 1.3 adversarial set 보강 → 재학습 |
-| ESP32 latency 초과 | Phase 2 model arch 축소 또는 Phase 4 양자화 재검토 |
-| ESP32 메모리 부족 | Phase 4 model size 축소 |
+**작업**
+- [ ] 실시간 테스트:
+  - 긴 ambient 오디오 + 실제 마이크 테스트
+  - 중복 트리거(duplicate detect) 억제 파라미터 점검
+- [ ] threshold/cooldown 최종 스윕:
+  - 목표 FAPH 구간에서 FRR 최소점 선택
+- [ ] release 산출물 고정:
+  - `models/<target_slug>/release/wake_nubjuk_ko.tflite`
+  - 메타데이터/평가 요약 포함
+- [ ] 핸드오프 문서 작성:
+  - cutoff, sliding window, arena 권장치
+
+**산출물**
+- 최종 release TFLite + 평가 리포트 + 디바이스 파라미터 표
+
+**Gate**
+- 목표 운영점에서 승인 기준 충족
+  - `FAPH` 목표 구간 충족
+  - `FRR/recall` 허용 범위 충족
+  - 디바이스 메모리/지연 예산 충족
+
+---
+
+## 운영 원칙 (요약)
+
+- 정확도 단일 지표 대신 **FAPH/FRR/DET** 중심으로 의사결정
+- 런타임 전처리와 학습 전처리의 일치 유지
+- 대규모 구조 변경보다 데이터/후처리 개선을 우선 적용
+- 모든 실험은 `target_slug`/`timestamp(run_id)` 단위로 추적 가능해야 함

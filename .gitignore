@@ -23,22 +23,19 @@ htmlcov/
 # Notebooks
 .ipynb_checkpoints/
 
-# Data — manifests only are tracked
-data/raw/
-data/synth/
-data/processed/
-data/cache/
-data/piper_voices/
-!data/manifests/
-!data/**/.gitkeep
-
 # Model checkpoints — release only is tracked
 models/checkpoints/
 models/exports/
 models/runs/
 models/wandb/
-!models/release/
+models/**/train/
+!models/**/release/
 !models/**/.gitkeep
+
+# Local pipeline artifacts (generated datasets/features/models)
+datasets/
+features/
+training/
 
 # TensorFlow / TensorBoard
 *.tfevents.*
@@ -58,9 +55,3 @@ Thumbs.db
 .env
 .env.local
 .gstack/
-
-# Vendored microWakeWord data artifacts (do not track)
-microWakeWord/notebooks/**
-!microWakeWord/notebooks/
-!microWakeWord/notebooks/basic_training_notebook.ipynb
-microWakeWord/microwakeword.egg-info/
