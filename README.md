@@ -40,8 +40,8 @@ mcu 가 의존하는 핸드오프 인터페이스. 변경 시 nubjuk-mcu 와 동
 
 ```bash
 # Python 3.10+ 권장
-python -m venv .venv && source .venv/bin/activate
-pip install -e .
+scripts/install.sh
+source .venv/bin/activate
 
 # Phase 1: 환경/런타임 검증
 mcu-wakeword check-env
@@ -62,6 +62,23 @@ mcu-wakeword resolve-config --target-word "넙죽아" --ensure-config --run-id 2
 
 # Example YAML 생성
 mcu-wakeword generate-yaml --config configs/pipeline.example.yaml --force
+```
+
+`scripts/install.sh` 는 기본적으로 `.venv` 를 만들고 패키지를 설치한 뒤,
+합성에 쓰는 Qwen TTS 모델(`Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign`)을 Hugging Face cache에 미리 내려받습니다.
+모델 접근에 토큰이 필요하면 `HF_TOKEN` 을 export 후 다시 실행하세요.
+`--download-only` 는 기본적으로 기존 `.venv` 를 사용하며, `.venv` 가 없으면 모델 다운로드에 필요한 최소 환경을 먼저 만듭니다.
+`--no-venv` 를 쓰는 경우 현재 Python 환경에 `huggingface-hub` 가 이미 설치되어 있어야 합니다.
+
+```bash
+# 개발 의존성까지 설치
+scripts/install.sh --dev
+
+# 모델 다운로드만 다시 실행
+scripts/install.sh --download-only
+
+# 설치만 하고 모델 다운로드는 생략
+scripts/install.sh --skip-tts-download
 ```
 
 ### 핵심 아키텍처 개선 사항
@@ -118,6 +135,7 @@ python scripts/10_plot_eval_dashboard.py \
 | `ARCHITECTURE.md` | 학습 파이프라인 + 데이터 흐름 |
 | `INTERFACES.md` | 모델 아티팩트 계약 (mcu 핸드오프) |
 | `PHASES.md` | 4-Phase 구현 계획 + Gate |
+| `docs/implementation-progress-2026-04-30.md` | 현재 브랜치 진행 내용 영역별 요약 |
 | `docs/mcu-integration-guide.md` | MCU 임베드/feature 매핑/검증 절차 |
 | `docs/model-usage-guide.md` | 로컬 host 모델 테스트 절차 |
 | `docs/livekit-vs-microwakeword-esp32-report.md` | LiveKit vs micro-wake-word ESP32 비교 보고서 |
