@@ -1,21 +1,25 @@
-# mcu-wakeword host 테스트 가이드 (넙죽아)
+# mcu-wakeword Host Test Guide
 
-이 문서는 현재 릴리즈 모델을 로컬 Python 환경에서 테스트하는 최소 절차를 정리합니다.
-MCU 임베드/feature 매핑/ESPHome식 C frontend 절차는 `docs/mcu-integration-guide.md` 를 기준으로 합니다.
+This document gives the minimum procedure for testing the current release model
+in a local Python environment. For MCU embedding, feature mapping, and the
+ESPHome-style C frontend path, use `docs/mcu-integration-guide.md`.
 
-- 모델 경로: `models/neopjuka/release/wake_nubjuk_ko.tflite`
-- manifest 경로: `models/neopjuka/release/wake_nubjuk_ko.json`
-- 기준 환경: Python venv 활성화(`source .venv/bin/activate`)
+- Model path: `models/neopjuka/release/wake_nubjuk_ko.tflite`
+- Manifest path: `models/neopjuka/release/wake_nubjuk_ko.json`
+- Baseline environment: activated Python venv (`source .venv/bin/activate`)
 
-주의:
-- 이 문서의 `scripts/09_realtime_mic_test.py` 는 host 진단용입니다.
-- host 테스트의 WebRTC VAD 옵션은 MCU 런타임 계약이 아닙니다.
-- MCU 1차 구현은 VAD 없이 wake model 단일 consumer 경로로 검증합니다.
-- 릴리스 산출물에는 `audio_preprocessor_int8.tflite` 를 포함하지 않습니다.
+Notes:
+- `scripts/09_realtime_mic_test.py` is a host diagnostic tool.
+- The WebRTC VAD option in the host test is not an MCU runtime contract.
+- First MCU implementation should validate the wake model as the single consumer, without VAD.
+- Release artifacts do not include `audio_preprocessor_int8.tflite`.
 
-## 1) 오프라인 테스트 (권장: 먼저 실행)
+## 1) Offline Test
 
-### 1-0. 모델 텐서 확인
+Run this first.
+
+### 1-0. Inspect Model Tensors
+
 ```bash
 .venv/bin/python - <<'PY'
 import tensorflow as tf
@@ -27,11 +31,14 @@ print("OUTPUT:", m.get_output_details())
 PY
 ```
 
-현재 릴리즈 기준:
+Current release baseline:
 - input: `[1, 3, 40]`, `int8`, `scale=0.10196078568696976`, `zero_point=-128`
 - output: `[1, 1]`, `uint8`, `scale=0.00390625`, `zero_point=0`
 
-### 1-1. `m4a`를 `wav`로 변환 (원본 유지)
+### 1-1. Convert `m4a` to `wav`
+
+This keeps the original files.
+
 ```bash
 mkdir -p /Volumes/Gold-P31-SSD-2TB/wakeword/neopjuka_wav16k
 find /Volumes/Gold-P31-SSD-2TB/wakeword/neopjuka -type f -name '*.m4a' -print0 | while IFS= read -r -d '' f; do
@@ -40,7 +47,8 @@ find /Volumes/Gold-P31-SSD-2TB/wakeword/neopjuka -type f -name '*.m4a' -print0 |
 done
 ```
 
-### 1-2. 파일 단위 감지 확인
+### 1-2. Check File-Level Detection
+
 ```bash
 python scripts/06_try_model.py \
   --model models/neopjuka/release/wake_nubjuk_ko.tflite \
@@ -49,19 +57,23 @@ python scripts/06_try_model.py \
   --ma-window 2
 ```
 
-출력 해석:
-- `DETECT`: 해당 파일에서 웨이크워드 감지
-- `MISS`: 미감지
-- `summary: X/Y detected`: 전체 감지 개수
+Output meaning:
+- `DETECT`: wakeword detected in the file
+- `MISS`: no detection
+- `summary: X/Y detected`: total detected files
 
-## 2) 실시간 마이크 테스트
+## 2) Realtime Microphone Test
 
-### 2-1. 장치 확인
+### 2-1. List Devices
+
 ```bash
 python scripts/09_realtime_mic_test.py --list-devices
 ```
 
-### 2-2. 감지 확인용(게이트 완화) 실행값
+### 2-2. Detection-Oriented Starting Command
+
+This command relaxes the gates to confirm that detection can fire.
+
 ```bash
 python scripts/09_realtime_mic_test.py \
   --model models/neopjuka/release/wake_nubjuk_ko.tflite \
@@ -78,34 +90,34 @@ python scripts/09_realtime_mic_test.py \
   --cooldown-ms 1200
 ```
 
-## 3) 오탐/미탐 튜닝 순서
+## 3) False Accept / False Reject Tuning Order
 
-1. 먼저 감지가 안정적으로 뜨는지 확인 (`cutoff=0.70`, `ma-window=2`)
-2. 오탐이 많으면 순서대로 강화
+1. First confirm stable detection with `cutoff=0.70` and `ma-window=2`.
+2. If false accepts are high, tighten in this order:
    - `cutoff`: `0.70 -> 0.73 -> 0.75`
    - `activation-mean-threshold`: `0.05 -> 0.10 -> 0.15`
    - `trigger-hold-blocks`: `1 -> 2`
-3. 미탐이 늘면 반대로 완화
-   - `cutoff`를 조금 내리기
-   - `activation-mean-threshold`를 낮추기
+3. If false rejects increase, relax in the opposite direction:
+   - lower `cutoff` slightly
+   - lower `activation-mean-threshold`
 
-## 4) 로그 기반 빠른 원인 진단
+## 4) Quick Log-Based Diagnosis
 
-실시간 로그에서 `ready=0`이면 아래 게이트를 확인합니다.
+If realtime logs show `ready=0`, inspect these gates.
 
 - `gates(..., loud=0, ...)`
-  - 원인: 입력 음량이 낮음 (`mic_dbfs < min_mic_dbfs`)
-  - 조치: `--min-mic-dbfs`를 더 낮추거나 `--preamp`를 올리기
+  - Cause: input volume is low (`mic_dbfs < min_mic_dbfs`)
+  - Action: lower `--min-mic-dbfs` or raise `--preamp`
 
 - `gates(act=0, ...)`
-  - 원인: `activation_mean`이 문턱 미달
-  - 조치: `--activation-window-ms`를 줄이고 `--activation-mean-threshold`를 낮추기
+  - Cause: `activation_mean` is below threshold
+  - Action: reduce `--activation-window-ms` and lower `--activation-mean-threshold`
 
 - `gates(..., speech=0, ...)`
-  - 원인: VAD 음성 게이트 미통과
-  - 조치: `--min-speech-ratio`, `--speech-hold-blocks`, `--vad-aggressiveness` 완화
+  - Cause: VAD speech gate failed
+  - Action: relax `--min-speech-ratio`, `--speech-hold-blocks`, or `--vad-aggressiveness`
 
-## 5) 추천 시작 파라미터
+## 5) Recommended Starting Parameters
 
 - `cutoff=0.70`
 - `ma-window=2`
@@ -118,12 +130,13 @@ python scripts/09_realtime_mic_test.py \
 - `min-mic-dbfs=-70`
 - `cooldown-ms=1200`
 
-위 설정으로 먼저 감지를 확인하고, 그 다음 오탐 억제를 위해 점진적으로 강화합니다.
+Use these settings to confirm detection first, then tighten gradually to reduce
+false accepts.
 
-## 용어 설명
+## Terminology
 
-- `cutoff`: 감지 점수 임계값. 높이면 오탐 감소, 미탐 증가.
-- `ma-window`: 최근 프레임 점수 이동평균 길이.
-- `activation_mean`: 최근 구간의 트리거 점수 평균.
-- `VAD`: Voice Activity Detection. 음성 구간인지 판별하는 게이트.
-- `mic_dbfs`: 입력 음량(dBFS) 지표.
+- `cutoff`: detection score threshold. Higher values reduce false accepts and increase false rejects.
+- `ma-window`: moving average length over recent frame scores.
+- `activation_mean`: average trigger score over the recent activation window.
+- `VAD`: Voice Activity Detection, a gate that decides whether the signal contains speech.
+- `mic_dbfs`: input volume level in dBFS.

@@ -1,69 +1,79 @@
-# nubjuk-wakeword — Claude Code 작업 규칙 (wakeword 세션 전용)
+# nubjuk-wakeword - Claude Code Rules
 
-## 모듈 책임 (한 줄)
-Python 학습 파이프라인. "넙죽 훈련병" 한국어 wake word 모델을 학습/평가/export 하여 `wake_nubjuk_ko.tflite` 를 mcu 에 핸드오프.
+## Module Responsibility
 
-상세 아키텍처는 `ARCHITECTURE.md` 참고.
+Python training pipeline. This repository trains, evaluates, and exports the
+Korean wakeword model artifacts, then hands `wake_nubjuk_ko.tflite` to the MCU
+repository.
 
----
-
-## 🚧 격리 규칙 (cwd = wakeword/)
-
-| 허용 | 금지 |
-|------|------|
-| `wakeword/**` (이 모듈 전체 read/write) | `mcu/**`, `viewer/**`, `brain/**` |
-| `docs/**` (read; protocol/*.md는 잠금) | `schemas/**` (잠금) |
-| | `README.md`, root `CLAUDE.md` — 통합 결정 문서 |
-
-다른 모듈 동작이 궁금하면 `docs/protocol/*.md` 또는 `nubjuk-mcu/INTERFACES.md` 만 참고. 다른 모듈 코드 직접 수정 금지.
-
-이 모듈은 **펌웨어 코드를 생성하지 않습니다.** ESP32 측 inference 구현 (`wake_engine_microwakeword.c`) 은 mcu 세션의 책임. 이 레포는 모델 파일만 산출.
+See `ARCHITECTURE.md` for the detailed architecture.
 
 ---
 
-## 🔒 잠금 정책
+## Isolation Rules (cwd = wakeword/)
 
-다음은 사용자 명시 승인 없이 변경 불가:
+| Allowed | Forbidden |
+|---------|-----------|
+| `wakeword/**` (read/write for this full module) | `mcu/**`, `viewer/**`, `brain/**` |
+| `docs/**` (read; `protocol/*.md` is locked) | `schemas/**` (locked) |
+| | root `README.md`, root `CLAUDE.md` integration decision files |
 
-### 모델 아티팩트 계약 (외부 잠금)
-- 입력 sample rate: 16 kHz mono
-- 입력 frame: 32 ms hop (512 samples)
-- Output: 단일 wake score (sigmoid 0~1)
-- Format: TFLite (TFLM 호환), int8 quantized
-- 출력 파일명: `models/release/wake_nubjuk_ko.tflite`
-- 자세한 정의는 `INTERFACES.md`
+If another module's behavior is needed, inspect only `docs/protocol/*.md` or
+`nubjuk-mcu/INTERFACES.md`. Do not edit other module code directly.
 
-→ 이 계약은 mcu 의 audio frame slicing / TFLM 입력 텐서 모양과 직접 결합. 변경 시 mcu 에서 코드/sdkconfig 동기 변경 필요 → 반드시 사용자 확인.
-
-### Phase 순서 (잠금)
-- Phase 1 → 2 → 3 → 4 순서. 임의 변경 금지.
-- 자세한 task 는 `PHASES.md`.
+This module does **not** generate firmware code. ESP32-side inference
+implementation (`wake_engine_microwakeword.c`) belongs to the MCU session. This
+repository only produces model files.
 
 ---
 
-## 작업 원칙
+## Lock Policy
 
-1. **모델 아티팩트 계약을 바꿔야 한다고 느끼면 STOP** — 사용자에게 먼저 확인
-2. **재현성 우선** — 학습 스크립트는 seed 고정, 데이터 manifest 버전 명시, 산출물은 git tag 와 함께 release
-3. **데이터셋 원본은 git 추적 X** — `data/raw/`, `data/synth/`, `data/processed/` 는 `.gitignore`. manifest (CSV/JSON) 만 git 추적
-4. **모델 파일은 release 만 git 추적** — `models/release/*.tflite` 만 commit, `models/checkpoints/`, `models/exports/` 는 ignore
-5. **Phase gate**: 평가 (FAR/FRR) 통과 못하면 release 하지 말 것
-6. **워킹 디렉토리 밖은 손대지 말 것** — mcu 측 코드 수정은 mcu 세션이 담당
+The following items cannot change without explicit user approval.
 
-### 격리가 깨지는 신호 (즉시 STOP, 사용자 확인)
+### Model Artifact Contract
 
-- 모델 입력/출력 shape 변경 필요
-- sample rate / frame size 변경 필요
-- mcu 측 `wake_engine_microwakeword.c` 를 직접 고쳐야 한다는 충동
-- root README/CLAUDE.md 변경 필요
+- Input sample rate: 16 kHz mono
+- Input frame: 32 ms hop (512 samples)
+- Output: single wake score (sigmoid 0-1)
+- Format: TFLite (TFLM compatible), int8 quantized
+- Output file name: `models/release/wake_nubjuk_ko.tflite`
+- Full definition: `INTERFACES.md`
+
+This contract is coupled to MCU audio frame slicing and TFLM input tensor shape.
+Any change requires matching code/sdkconfig updates in the MCU repo, so stop and
+ask the user first.
+
+### Phase Order
+
+- Keep Phase 1 -> 2 -> 3 -> 4 order.
+- See `PHASES.md` for the task list.
 
 ---
 
-## 문서 인덱스
+## Working Principles
 
-| 파일 | 내용 |
-|------|------|
-| `CLAUDE.md` (이 파일) | 작업 규칙 + 잠금 정책 |
-| `ARCHITECTURE.md` | 학습 파이프라인, 데이터 흐름 |
-| `INTERFACES.md` | 모델 아티팩트 계약 (mcu 핸드오프) |
-| `PHASES.md` | 4-Phase 구현 task + Gate 기준 |
+1. If a model artifact contract change seems necessary, stop and ask the user first.
+2. Prefer reproducibility. Fix seeds, version manifests, and release artifacts with a git tag.
+3. Do not track raw datasets in git. Track manifests only.
+4. Track only release model files in git. Ignore checkpoints and intermediate exports.
+5. Do not release if the phase gate metrics fail.
+6. Do not edit outside this working directory. MCU-side code belongs to the MCU session.
+
+### Stop Signals
+
+- Model input/output shape needs to change.
+- Sample rate or frame size needs to change.
+- You feel tempted to edit MCU-side `wake_engine_microwakeword.c`.
+- Root integration files need changes outside this repository's scope.
+
+---
+
+## Documentation Index
+
+| File | Purpose |
+|------|---------|
+| `CLAUDE.md` | Agent rules and lock policy |
+| `ARCHITECTURE.md` | Training pipeline and data flow |
+| `INTERFACES.md` | Model artifact contract for MCU handoff |
+| `PHASES.md` | 4-phase implementation tasks and gates |
