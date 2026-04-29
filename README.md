@@ -118,6 +118,8 @@ python scripts/10_plot_eval_dashboard.py \
 | `ARCHITECTURE.md` | 학습 파이프라인 + 데이터 흐름 |
 | `INTERFACES.md` | 모델 아티팩트 계약 (mcu 핸드오프) |
 | `PHASES.md` | 4-Phase 구현 계획 + Gate |
+| `docs/mcu-integration-guide.md` | MCU 임베드/feature 매핑/검증 절차 |
+| `docs/model-usage-guide.md` | 로컬 host 모델 테스트 절차 |
 | `docs/livekit-vs-microwakeword-esp32-report.md` | LiveKit vs micro-wake-word ESP32 비교 보고서 |
 | `notebooks/01_local_bootstrap.ipynb` | 로컬 실행 허브 (env/synth/train/eval/export) |
 | `THIRD_PARTY_NOTICES.md` | 벤더링/의존성 라이선스 고지 |
@@ -167,5 +169,7 @@ python scripts/12_refactor_dataset_layout.py --target-word "넙죽아"
 cp models/<target_slug>/release/wake_nubjuk_ko.* ../mcu/main/wake/
 # mcu 측에서 COMPONENT_EMBED_FILES 로 펌웨어에 임베드
 ```
+
+MCU 구현 세부사항은 `docs/mcu-integration-guide.md` 를 기준으로 합니다. 특히 `audio_preprocessor_int8.tflite` 는 사용하지 않고, C audio frontend 의 `uint16` feature 를 ESPHome microWakeWord 방식으로 `int8`에 매핑해야 합니다.
 
 라이선스·키 의존성 없음. Picovoice 와 무관.

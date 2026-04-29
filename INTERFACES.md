@@ -30,8 +30,9 @@ mcu 측 매칭:
 
 | 속성 | 값 |
 |------|------|
-| Shape | `[1, 1]` (단일 sigmoid) 또는 모델 종류에 따라 multi-class |
-| Range | 0.0 ~ 1.0 (sigmoid) |
+| Shape | `[1, 1]` |
+| dtype | `uint8` (`scale=0.00390625`, `zero_point=0`) |
+| Range | 0.0 ~ 1.0 score 로 해석 |
 | 의미 | 1.0 에 가까울수록 wake word 검출 |
 
 ### 양자화
@@ -39,7 +40,8 @@ mcu 측 매칭:
 | 속성 | 값 |
 |------|------|
 | Quantization | **int8 PTQ** (Post-Training Quantization) |
-| 입력/출력 dtype | int8 (scale + zero_point metadata 포함) |
+| 입력 dtype | `int8` (`scale=0.10196078568696976`, `zero_point=-128`) |
+| 출력 dtype | `uint8` (`scale=0.00390625`, `zero_point=0`) |
 | 대표 데이터셋 | 학습 데이터 일부 (~100 샘플) 으로 캘리브레이션 |
 
 ### TFLite Micro 호환
@@ -72,6 +74,20 @@ mcu 측 매칭:
 ```
 
 `audio_preprocessor_int8.tflite` 는 릴리스 필수 산출물이 아니다. mcu 런타임은 ESPHome microWakeWord 와 같은 방식으로 C audio frontend 를 사용한다.
+
+### mcu feature 매핑
+
+mcu 런타임은 TFLite audio preprocessor 모델을 실행하지 않는다. C audio frontend 가 생성한 40-bin `uint16` feature 를 ESPHome microWakeWord 와 같은 고정 매핑으로 wake model 입력 `int8`에 넣는다.
+
+```c
+int32_t v = ((int32_t) mel_value * 256 + 333) / 666;
+v -= 128;
+if (v < -128) v = -128;
+if (v > 127) v = 127;
+features_buffer[i] = (int8_t) v;
+```
+
+주의: 위 `mel_value`에는 일반 TFLite 공식 `q = round(x / scale) + zero_point`를 바로 적용하지 않는다. 그 공식은 모델이 학습 때 본 float feature와 동일한 값 `x`가 있을 때만 사용한다. 현재 MCU 경로의 기준은 ESPHome식 C frontend 출력 매핑이다.
 
 ---
 

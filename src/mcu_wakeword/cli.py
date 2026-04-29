@@ -749,6 +749,12 @@ def cmd_augment(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_web(args: argparse.Namespace) -> int:
+    from .web.app import run_dev_server
+
+    return run_dev_server(host=args.host, port=args.port, reload=args.reload)
+
+
 def cmd_quality_gate(args: argparse.Namespace) -> int:
     output_dir = Path(args.output_dir).resolve()
     manifest_path = (
@@ -1599,6 +1605,20 @@ def main(argv: list[str] | None = None) -> int:
     check_env = sub.add_parser("check-env", help="Phase 0: environment checks")
     check_env.add_argument("--strict", action="store_true", help="Return non-zero on missing deps")
     check_env.set_defaults(fn=cmd_check_env)
+
+    web = sub.add_parser(
+        "web",
+        help="Run the local custom wakeword web studio",
+    )
+    web.add_argument("--host", default="127.0.0.1")
+    web.add_argument("--port", type=int, default=8765)
+    web.add_argument(
+        "--reload",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Reload the web server when source files change",
+    )
+    web.set_defaults(fn=cmd_web)
 
     init_config = sub.add_parser(
         "init-config",

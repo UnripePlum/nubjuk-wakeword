@@ -27,6 +27,8 @@ dependencies = [
     "tensorflow>=2.16",
     "webrtcvad-wheels",
     "qwen-tts>=0.1.1",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
 ]
 
 [project.optional-dependencies]
@@ -34,6 +36,8 @@ dev = [
     "pytest>=7",
     "ruff>=0.4",
     "mypy>=1.8",
+    "httpx>=0.24",
+    "playwright>=1.40",
 ]
 notebook = [
     "jupyter",

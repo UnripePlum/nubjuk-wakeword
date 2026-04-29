@@ -7,6 +7,7 @@ from pathlib import Path
 import yaml
 
 from mcu_wakeword import cli
+from mcu_wakeword.web import app as web_app
 from mcu_wakeword.word_slug import target_word_to_slug
 
 
@@ -18,6 +19,21 @@ def test_check_env_command_returns_zero_and_prints_stub() -> None:
     output = stream.getvalue()
     assert code == 0
     assert "[check-env]" in output
+
+
+def test_web_command_dispatches_dev_server(monkeypatch) -> None:
+    observed = {}
+
+    def fake_run_dev_server(**kwargs):
+        observed.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(web_app, "run_dev_server", fake_run_dev_server)
+
+    code = cli.main(["web", "--host", "0.0.0.0", "--port", "9876", "--reload"])
+
+    assert code == 0
+    assert observed == {"host": "0.0.0.0", "port": 9876, "reload": True}
 
 
 def test_synth_command_returns_zero_and_prints_stub() -> None:

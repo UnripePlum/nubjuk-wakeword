@@ -182,7 +182,8 @@ def build_adversarial_phrases(
                     if repl and repl != ch:
                         out.add(word[:i] + repl + word[i + 1 :])
 
-    # Low-cost fallback bank by language.
+    # Low-cost fallback bank by language. Keep this target-agnostic; project-specific
+    # words belong in custom_phrases so the generic studio can train any wakeword.
     if "korean" in language.lower():
         out.update(
             {
@@ -193,15 +194,31 @@ def build_adversarial_phrases(
                 "켜줘",
                 "다시",
                 "컴퓨터",
-                "넙죽",
-                "넙넙아",
-                "넌넌아",
-                "넙죽이",
-                "넌죽아",
+                "그만",
+                "잠깐",
+                "확인",
+                "취소",
+                "실행",
+                "중지",
             }
         )
     else:
-        out.update({"hello", "start", "stop", "computer", "again"})
+        out.update(
+            {
+                "hello",
+                "start",
+                "stop",
+                "computer",
+                "again",
+                "cancel",
+                "confirm",
+                "continue",
+                "pause",
+                "resume",
+                "ready",
+                "system",
+            }
+        )
 
     for phrase in custom_phrases:
         clean = phrase.strip()
@@ -218,7 +235,7 @@ def build_adversarial_phrases(
         if not cand_norm:
             return True
         for t in target_norms:
-            # Drop exact or target-containing variants (e.g. "넙죽아아", "넙넙죽아").
+            # Drop exact or target-containing variants, including duplicated targets.
             if cand_norm == t or t in cand_norm or cand_norm in t:
                 return True
         return False

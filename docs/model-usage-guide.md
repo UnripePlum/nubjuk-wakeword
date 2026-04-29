@@ -1,11 +1,35 @@
-# mcu-wakeword 모델 사용 가이드 (넙죽아)
+# mcu-wakeword host 테스트 가이드 (넙죽아)
 
-이 문서는 현재 릴리즈 모델을 로컬에서 테스트하는 최소 절차를 정리합니다.
+이 문서는 현재 릴리즈 모델을 로컬 Python 환경에서 테스트하는 최소 절차를 정리합니다.
+MCU 임베드/feature 매핑/ESPHome식 C frontend 절차는 `docs/mcu-integration-guide.md` 를 기준으로 합니다.
 
 - 모델 경로: `models/neopjuka/release/wake_nubjuk_ko.tflite`
+- manifest 경로: `models/neopjuka/release/wake_nubjuk_ko.json`
 - 기준 환경: Python venv 활성화(`source .venv/bin/activate`)
 
+주의:
+- 이 문서의 `scripts/09_realtime_mic_test.py` 는 host 진단용입니다.
+- host 테스트의 WebRTC VAD 옵션은 MCU 런타임 계약이 아닙니다.
+- MCU 1차 구현은 VAD 없이 wake model 단일 consumer 경로로 검증합니다.
+- 릴리스 산출물에는 `audio_preprocessor_int8.tflite` 를 포함하지 않습니다.
+
 ## 1) 오프라인 테스트 (권장: 먼저 실행)
+
+### 1-0. 모델 텐서 확인
+```bash
+.venv/bin/python - <<'PY'
+import tensorflow as tf
+
+m = tf.lite.Interpreter(model_path="models/neopjuka/release/wake_nubjuk_ko.tflite")
+m.allocate_tensors()
+print("INPUT :", m.get_input_details())
+print("OUTPUT:", m.get_output_details())
+PY
+```
+
+현재 릴리즈 기준:
+- input: `[1, 3, 40]`, `int8`, `scale=0.10196078568696976`, `zero_point=-128`
+- output: `[1, 1]`, `uint8`, `scale=0.00390625`, `zero_point=0`
 
 ### 1-1. `m4a`를 `wav`로 변환 (원본 유지)
 ```bash

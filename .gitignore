@@ -55,3 +55,4 @@ Thumbs.db
 .env
 .env.local
 .gstack/
+.mcu_wakeword/
