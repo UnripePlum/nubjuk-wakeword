@@ -97,6 +97,29 @@ scripts/install.sh --skip-tts-download
 - Holdout-based evaluation dashboard (`cli eval`)
 - Fixed release artifact path (`models/<target_slug>/release/wake_nubjuk_ko.tflite`, `wake_nubjuk_ko.json`)
 
+## Current Status
+
+The current branch has the local Web Studio, install script, English
+documentation, and microWakeWord MCU handoff docs in place. The core path is now
+set up for custom wakewords rather than a single fixed phrase.
+
+Completed:
+- Web Studio scaffolding for custom wakeword creation.
+- `scripts/install.sh` for local environment setup and TTS model pre-download.
+- microWakeWord-style MCU integration guidance.
+- Host-side model usage guide and install script tests.
+- English-only Markdown documentation.
+
+Remaining verification:
+- Run `scripts/install.sh --download-only` in a real network environment and
+  confirm the Qwen TTS model cache path.
+- Dogfood the full Web Studio flow: create run, generate seed sample, approve
+  sample, generate data, train, evaluate, export, and run host microphone test.
+- Run an end-to-end training cycle for a new wakeword and inspect the evaluation
+  dashboard.
+- Copy release artifacts into the MCU repo and measure ESP32-S3 feature mapping,
+  threshold, tensor arena, latency, and false accepts.
+
 ### Notebook Start
 
 ```bash
